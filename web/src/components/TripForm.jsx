@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { suggestLocations } from "../api";
 
 const SAMPLES = [
@@ -70,19 +70,31 @@ const SAMPLES = [
 function PlaceField({ id, label, value, onChange, placeholder }) {
   const [open, setOpen] = useState(false);
   const [hits, setHits] = useState([]);
+  const requestId = useRef(0);
 
   useEffect(() => {
-    if (value.trim().length < 3) {
+    if (!open || value.trim().length < 3) {
       setHits([]);
       return undefined;
     }
+    const current = ++requestId.current;
     const handle = setTimeout(async () => {
       const results = await suggestLocations(value);
+      if (current !== requestId.current) return;
       setHits(results);
-      setOpen(results.length > 0);
-    }, 350);
+    }, 300);
     return () => clearTimeout(handle);
-  }, [value]);
+  }, [open, value]);
+
+  function close() {
+    requestId.current += 1;
+    setOpen(false);
+  }
+
+  function choose(next) {
+    onChange(next);
+    close();
+  }
 
   return (
     <div className="field">
@@ -90,22 +102,30 @@ function PlaceField({ id, label, value, onChange, placeholder }) {
       <input
         id={id}
         type="text"
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
         value={value}
         placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => hits.length && setOpen(true)}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => {
+          if (value.trim().length >= 3) setOpen(true);
+        }}
+        onBlur={close}
         autoComplete="off"
       />
-      {open && (
-        <div className="suggest">
+      {open && hits.length > 0 && (
+        <div className="suggest" role="listbox">
           {hits.map((hit) => (
             <button
               type="button"
+              role="option"
               key={hit.label}
-              onClick={() => {
-                onChange(hit.label);
-                setOpen(false);
-              }}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => choose(hit.label)}
             >
               {hit.label}
             </button>
