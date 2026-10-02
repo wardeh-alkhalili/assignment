@@ -16,6 +16,55 @@ const SAMPLES = [
     dropoff_location: "Los Angeles, CA",
     current_cycle_used: 8,
   },
+  {
+    label: "Texas triangle",
+    current_location: "Dallas, TX",
+    pickup_location: "Houston, TX",
+    dropoff_location: "San Antonio, TX",
+    current_cycle_used: 22,
+  },
+  {
+    label: "Southeast run",
+    current_location: "Atlanta, GA",
+    pickup_location: "Jacksonville, FL",
+    dropoff_location: "Miami, FL",
+    current_cycle_used: 12,
+  },
+  {
+    label: "Pacific corridor",
+    current_location: "Seattle, WA",
+    pickup_location: "Portland, OR",
+    dropoff_location: "Sacramento, CA",
+    current_cycle_used: 6,
+  },
+  {
+    label: "I-80 Midwest",
+    current_location: "Omaha, NE",
+    pickup_location: "Des Moines, IA",
+    dropoff_location: "Chicago, IL",
+    current_cycle_used: 28,
+  },
+  {
+    label: "Mountain west",
+    current_location: "Denver, CO",
+    pickup_location: "Salt Lake City, UT",
+    dropoff_location: "Boise, ID",
+    current_cycle_used: 15,
+  },
+  {
+    label: "Northeast short",
+    current_location: "Boston, MA",
+    pickup_location: "New York, NY",
+    dropoff_location: "Baltimore, MD",
+    current_cycle_used: 40,
+  },
+  {
+    label: "Produce haul",
+    current_location: "Phoenix, AZ",
+    pickup_location: "Nogales, AZ",
+    dropoff_location: "Chicago, IL",
+    current_cycle_used: 4,
+  },
 ];
 
 function PlaceField({ id, label, value, onChange, placeholder }) {
@@ -131,11 +180,20 @@ export default function TripForm({ onPlan, loading }) {
       <button className="primary" type="submit" disabled={loading}>
         {loading ? "Building route and logs…" : "Generate route & ELD logs"}
       </button>
+      <p className="samples-label">Sample trips</p>
       <div className="samples">
         {SAMPLES.map((sample) => (
           <button
             type="button"
             key={sample.label}
+            className={
+              form.current_location === sample.current_location &&
+              form.pickup_location === sample.pickup_location &&
+              form.dropoff_location === sample.dropoff_location &&
+              Number(form.current_cycle_used) === Number(sample.current_cycle_used)
+                ? "active"
+                : undefined
+            }
             onClick={() => setForm(sample)}
           >
             {sample.label}

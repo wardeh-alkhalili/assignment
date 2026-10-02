@@ -2,36 +2,57 @@
 
 Full-stack Hours of Service trip planner: **Django API** + **React** UI.
 
-The app takes current / pickup / dropoff locations and cycle hours already used, then returns:
+The app takes current, pickup, and dropoff locations plus cycle hours already used, then returns:
 
 - A driving route on OpenStreetMap
-- Fuel, 30-minute break, sleeper, pickup, and dropoff stops
+- Fuel, 30-minute break, sleeper, 34-hour restart, pickup, and dropoff stops
 - Filled FMCSA-style daily log sheets (one sheet per day)
 
-Rules used (property-carrying, 70-hour / 8-day, no adverse conditions):
+Each successful plan is stored on the `Trip` model (`current_location`, `pickup_location`, `dropoff_location`, `current_cycle_used`, `result`).
+
+Rules implemented in `trips/services/hos.py` (property-carrying, no adverse-conditions exception):
 
 - 11-hour driving limit and 14-hour duty window
-- 10-hour sleeper berth rest to reset 11/14
-- 30-minute break after 8 hours of driving
-- 70-hour / 8-day cycle, with a 34-hour restart if needed
+- 10-hour sleeper berth rest resets the 11-hour and 14-hour clocks
+- 30-minute off-duty break after 8 hours of driving
+- 70-hour cycle, tracked as a running total of driving and on-duty time, reset by a 34-hour off-duty restart
 - 1 hour on-duty for pickup and 1 hour for dropoff
-- Fueling at least once every 1,000 miles
+- Fuel stop of 30 minutes on-duty at least once every 1,000 miles
+- Duty times snap to 15-minute increments
+- The trip starts at 06:00 on the current date
+- Each log sheet is padded with off-duty time so the four status rows total 24 hours
+
+The daily-log recap uses that running cycle total:
+
+- **A** — cycle hours used at the end of the day
+- **B** — hours left (`70 − A`)
+- **C** — on-duty hours over the last 5 log days
 
 ## Database
 
-PostgreSQL is required. Create a local database (defaults match `settings.py`):
+PostgreSQL is required. Defaults in `driverlog/settings.py`:
+
+| Variable | Default |
+|---|---|
+| `POSTGRES_DB` | `driverlog` |
+| `POSTGRES_USER` | `postgres` |
+| `POSTGRES_PASSWORD` | `1234` |
+| `POSTGRES_HOST` | `127.0.0.1` |
+| `POSTGRES_PORT` | `5432` |
+
+Create the database the defaults expect:
 
 ```bash
-sudo -u postgres psql -c "CREATE USER driverlog WITH PASSWORD 'driverlog';"
-sudo -u postgres psql -c "CREATE DATABASE driverlog OWNER driverlog;"
+psql -U postgres -h 127.0.0.1 -c "CREATE DATABASE driverlog;"
 ```
 
-Override connection details with environment variables if needed: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`.
+If `DATABASE_URL` is set, it replaces those settings through `dj-database-url`. `POSTGRES_SSL` defaults to `true` in that case.
 
 ## Run locally
 
+From the repository root (the folder that contains `manage.py`):
+
 ```bash
-cd driverlog
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -42,16 +63,26 @@ python manage.py runserver
 In another terminal:
 
 ```bash
-cd driverlog/web
+cd web
 npm install
 npm run dev
 ```
 
 Open http://localhost:5173
 
-The Vite dev server proxies `/api` to Django on port 8000.
+The Vite dev server listens on port 5173 and proxies `/api` to `http://127.0.0.1:8000`. Leave `VITE_API_BASE` unset locally so the UI calls that proxy.
 
 ## API
+
+`GET /api/health/`
+
+```json
+{"ok": true, "service": "driverlog"}
+```
+
+`GET /api/geocode/?q=`
+
+Returns up to 5 Nominatim suggestions when `q` is at least 3 characters. The trip form calls this while typing.
 
 `POST /api/trips/plan/`
 
@@ -64,36 +95,24 @@ The Vite dev server proxies `/api` to Django on port 8000.
 }
 ```
 
-Maps use OpenStreetMap tiles, Nominatim geocoding, and the public OSRM router (no API key).
+`current_cycle_used` must be a number from 0 to 70. All three locations are required. Errors come back as `{"error": "..."}` with status 400, 500, or 502.
+
+A successful response includes `inputs`, `locations`, `route` (`geometry`, `legs`, `stops`), `summary`, `events`, `timeline`, and `daily_logs`.
+
+Maps use OpenStreetMap tiles (`https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`). Places are geocoded with Nominatim (`https://nominatim.openstreetmap.org/search`), with a 1-second pause between the three trip lookups. Driving geometry and durations come from the public OSRM router (`https://router.project-osrm.org/route/v1/driving`). No API key is used. If a leg is longer than 0.2 miles and OSRM reports under 0.05 hours, duration is replaced with miles ÷ 55.
+
+The form also loads two samples: Midwest haul (Chicago → Indianapolis → Kansas City, 18 hours used) and coast to coast (Newark → Philadelphia → Los Angeles, 8 hours used).
 
 ## Deploy (Vercel + Django host)
 
-Vercel should host the **React app only**. Django and PostgreSQL do not run well on Vercel, so put the API on Render (or Railway) and point the frontend at it.
+Vercel hosts the React app only. Run Django and PostgreSQL on Render (or Railway) and point the frontend at that API.
 
-### 1. Push the project to GitHub
+### 1. Deploy the Django API (Render)
 
-From the `driverlog` folder:
-
-```bash
-cd /home/ward/Documents/assigsmnet/driverlog
-git init
-git add .
-git commit -m "DriverLog Django + React HOS planner"
-```
-
-Create a GitHub repo, then:
-
-```bash
-git remote add origin https://github.com/YOUR_USER/driverlog.git
-git push -u origin main
-```
-
-### 2. Deploy the Django API (Render)
-
-1. Go to [https://render.com](https://render.com) and create a **PostgreSQL** database. Copy the **Internal Database URL**.
-2. Create a **Web Service** from the GitHub repo.
+1. Create a **PostgreSQL** database and copy its connection URL.
+2. Create a **Web Service** from this repository.
 3. Settings:
-   - **Root directory:** leave empty if the repo is `driverlog`
+   - **Root directory:** the repository root (where `manage.py` is)
    - **Runtime:** Python
    - **Build command:** `pip install -r requirements.txt && python manage.py migrate`
    - **Start command:** `gunicorn driverlog.wsgi:application`
@@ -107,22 +126,20 @@ git push -u origin main
 | `DATABASE_URL` | the Render Postgres URL |
 | `CSRF_TRUSTED_ORIGINS` | `https://your-app.vercel.app` |
 
-After deploy, check `https://your-service.onrender.com/api/health/` — it should return `{"ok": true}`.
+`DJANGO_DEBUG` defaults to `true` when unset. `DJANGO_ALLOWED_HOSTS` defaults to `*`. CORS allows every origin.
 
-### 3. Deploy the React app to Vercel
+After deploy, `https://your-service.onrender.com/api/health/` returns `{"ok": true, "service": "driverlog"}`.
 
-1. Go to [https://vercel.com/new](https://vercel.com/new) and import the same GitHub repo.
+### 2. Deploy the React app to Vercel
+
+1. Import this repository at [https://vercel.com/new](https://vercel.com/new).
 2. Configure the project:
    - **Root Directory:** `web`
    - **Framework Preset:** Vite
    - **Build Command:** `npm run build`
    - **Output Directory:** `dist`
-3. Add an environment variable:
+3. Environment variable (see `web/.env.example`):
    - **Name:** `VITE_API_BASE`
    - **Value:** `https://your-service.onrender.com` (no trailing slash)
-4. Deploy.
 
-Open the Vercel URL. The UI will call your Django API for routes and ELD logs.
-
-If you change `VITE_API_BASE` later, you must **redeploy** the frontend. Vite bakes that value in at build time.
-
+The UI calls `${VITE_API_BASE}/api/trips/plan/` and `${VITE_API_BASE}/api/geocode/`. Changing `VITE_API_BASE` requires a new frontend deploy, because Vite bakes it in at build time.

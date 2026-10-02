@@ -130,7 +130,15 @@ input:focus { outline: 2px solid #e0a10655; border-color: var(--amber); }
 .primary:disabled { opacity: 0.6; cursor: wait; }
 .primary:hover:not(:disabled) { background: #16325a; }
 .error { margin-top: 12px; color: #9b1c1c; background: #fde8e8; border-radius: 8px; padding: 10px; font-size: 13px; }
-.samples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.samples-label {
+  margin: 16px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--navy);
+}
+.samples { display: flex; flex-wrap: wrap; gap: 8px; }
 .samples button {
   border: 1px solid var(--line);
   background: #f7f1e5;
@@ -138,6 +146,12 @@ input:focus { outline: 2px solid #e0a10655; border-color: var(--amber); }
   padding: 6px 10px;
   font-size: 12px;
   cursor: pointer;
+}
+.samples button:hover { border-color: var(--amber); background: #fff8ea; }
+.samples button.active {
+  background: var(--navy);
+  color: #fff;
+  border-color: var(--navy);
 }
 
 .results { display: grid; gap: 16px; }
